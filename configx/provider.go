@@ -57,7 +57,7 @@ type Provider struct {
 	onChanges                []func(watcherx.Event, error)
 	onValidationError        func(k *koanf.Koanf, err error)
 	excludeFieldsFromTracing []string
-	tracer                   *otelx.Tracer
+	tracer                   trace.Tracer
 
 	forcedValues []tuple
 	baseValues   []tuple
@@ -252,15 +252,29 @@ func (p *Provider) newKoanf() (*koanf.Koanf, error) {
 }
 
 // SetTracer sets the tracer.
+// DEPRECATED: use SetTracerOTLP instead.
 func (p *Provider) SetTracer(ctx context.Context, t *otelx.Tracer) {
+	p.SetTracerOTLP(ctx, t.Tracer())
+}
+
+func (p *Provider) SetTracerOTLP(ctx context.Context, t trace.Tracer) {
 	p.tracer = t
 	p.traceConfig(ctx, p.Koanf, SnapshotSpanOpName)
 }
 
+// Tracer returns the current tracer.
+func (p *Provider) Tracer() trace.Tracer {
+	// be careful not to return non-nil interface to nil implementation
+	if p.tracer != nil {
+		return p.tracer
+	}
+	return nil
+}
+
 func (p *Provider) startSpan(ctx context.Context, opName string) (context.Context, trace.Span) {
 	tracer := otel.Tracer("github.com/ory/x/configx")
-	if p.tracer != nil && p.tracer.Tracer() != nil {
-		tracer = p.tracer.Tracer()
+	if p.tracer != nil {
+		tracer = p.tracer
 	}
 	return tracer.Start(ctx, opName)
 }

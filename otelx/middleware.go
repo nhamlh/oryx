@@ -7,22 +7,14 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-const tracingComponent = "github.com/ory/x/otelx"
-
 func isHealthFilter(r *http.Request) bool {
 	path := r.URL.Path
-	if strings.HasPrefix(path, "/health/") {
-		return false
-	}
-	return true
+	return !strings.HasPrefix(path, "/health/")
 }
 
 func isAdminHealthFilter(r *http.Request) bool {
 	path := r.URL.Path
-	if strings.HasPrefix(path, "/admin/health/") {
-		return false
-	}
-	return true
+	return !strings.HasPrefix(path, "/admin/health/")
 }
 
 func filterOpts() []otelhttp.Option {

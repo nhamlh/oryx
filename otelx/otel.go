@@ -7,78 +7,81 @@ import (
 	"github.com/ory/x/stringsx"
 )
 
+// Tracer wraps an OpenTelemetry tracer.
+// DEPRECATED: use a trace.Tracer directly instead.
 type Tracer struct {
-	Config *Config
-
-	l      *logrusx.Logger
-	tracer trace.Tracer
+	t trace.Tracer
 }
 
-// Creates a new tracer. If name is empty, a default tracer name is used
-// instead. See: https://godocs.io/go.opentelemetry.io/otel/sdk/trace#TracerProvider.Tracer
-func New(name string, l *logrusx.Logger, c *Config) (*Tracer, error) {
-	t := &Tracer{Config: c, l: l}
-
-	if err := t.setup(name); err != nil {
-		return nil, err
+// Wrap wraps an OpenTelemetry Tracer. For migration only, don't use in new code.
+func Wrap(t trace.Tracer) *Tracer {
+	if t == nil {
+		return nil
 	}
-
-	return t, nil
+	return &Tracer{t}
 }
 
-// Creates a new no-op tracer.
-func NewNoop(l *logrusx.Logger, c *Config) *Tracer {
-	tp := trace.NewNoopTracerProvider()
-	t := &Tracer{Config: c, l: l, tracer: tp.Tracer("")}
-	return t
-}
-
-// setup sets up the tracer.
-func (t *Tracer) setup(name string) error {
-	switch f := stringsx.SwitchExact(t.Config.Provider); {
-	case f.AddCase("jaeger"):
-		tracer, err := SetupJaeger(t, name)
-		if err != nil {
-			return err
-		}
-
-		t.tracer = tracer
-		t.l.Infof("Jaeger tracer configured! Sending spans to %s", t.Config.Providers.Jaeger.LocalAgentAddress)
-	case f.AddCase("zipkin"):
-		tracer, err := SetupZipkin(t, name)
-		if err != nil {
-			return err
-		}
-
-		t.tracer = tracer
-		t.l.Infof("Zipkin tracer configured! Sending spans to %s", t.Config.Providers.Zipkin.ServerURL)
-	case f.AddCase("otel"):
-		tracer, err := SetupOTLP(t, name)
-		if err != nil {
-			return err
-		}
-
-		t.tracer = tracer
-		t.l.Infof("OTLP tracer configured! Sending spans to %s", t.Config.Providers.OTLP.ServerURL)
-	case f.AddCase(""):
-		t.l.Infof("No tracer configured - skipping tracing setup")
-		t.tracer = trace.NewNoopTracerProvider().Tracer(name)
-	default:
-		return f.ToUnknownCaseErr()
+// Tracer returns the wrapped OpenTelemetry tracer.
+func (t *Tracer) Tracer() trace.Tracer {
+	if t == nil {
+		return nil
 	}
-
-	return nil
+	return t.t
 }
 
 // IsLoaded returns true if the tracer has been loaded.
 func (t *Tracer) IsLoaded() bool {
-	if t == nil || t.tracer == nil {
-		return false
-	}
-	return true
+	return t == nil || t.t == nil
 }
 
-// Returns the wrapped tracer.
-func (t *Tracer) Tracer() trace.Tracer {
-	return t.tracer
+// NewNoop creates a new no-op tracer.
+// DEPRECATED: Use NewNoopOTLP instead
+func NewNoop(_ *logrusx.Logger, _ *Config) *Tracer {
+	return Wrap(NewNoopOTLP())
+}
+
+// NewNoopOTLP creates a new no-op tracer.
+func NewNoopOTLP() trace.Tracer {
+	return trace.NewNoopTracerProvider().Tracer("")
+}
+
+// New creates a new tracer. If name is empty, a default tracer name is used
+// instead. See: https://godocs.io/go.opentelemetry.io/otel/sdk/trace#TracerProvider.Tracer
+// DEPRECATED: use NewFromConfig instead.
+func New(name string, l *logrusx.Logger, c *Config) (*Tracer, error) {
+	t, err := NewFromConfig(name, l, c)
+	return Wrap(t), err
+}
+
+// NewFromConfig creates a new tracer. If name is empty, a default tracer name is used
+// instead. See: https://godocs.io/go.opentelemetry.io/otel/sdk/trace#TracerProvider.Tracer
+func NewFromConfig(name string, l *logrusx.Logger, c *Config) (trace.Tracer, error) {
+	switch f := stringsx.SwitchExact(c.Provider); {
+	case f.AddCase("jaeger"):
+		tracer, err := SetupJaeger(name, c)
+		if err != nil {
+			return nil, err
+		}
+		l.Infof("Jaeger tracer configured! Sending spans to %s", c.Providers.Jaeger.LocalAgentAddress)
+		return tracer, nil
+	case f.AddCase("zipkin"):
+		tracer, err := SetupZipkin(name, c)
+		if err != nil {
+			return nil, err
+		}
+		l.Infof("Zipkin tracer configured! Sending spans to %s", c.Providers.Zipkin.ServerURL)
+		return tracer, nil
+	case f.AddCase("otel"):
+		tracer, err := SetupOTLP(name, c)
+		if err != nil {
+			return nil, err
+		}
+		l.Infof("OTLP tracer configured! Sending spans to %s", c.Providers.OTLP.ServerURL)
+		return tracer, nil
+	case f.AddCase(""):
+		l.Infof("No tracer configured - skipping tracing setup")
+		return trace.NewNoopTracerProvider().Tracer(name), nil
+	default:
+		return nil, f.ToUnknownCaseErr()
+	}
 }
