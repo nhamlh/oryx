@@ -78,7 +78,13 @@ func (t *Tracer) IsLoaded() bool {
 	return true
 }
 
-// Returns the wrapped tracer.
+// Tracer returns the underlying OpenTelemetry tracer.
 func (t *Tracer) Tracer() trace.Tracer {
 	return t.tracer
+}
+
+// WithOTLP returns a new tracer with the underlying OpenTelemetry Tracer
+// replaced.
+func (t *Tracer) WithOTLP(other trace.Tracer) *Tracer {
+	return &Tracer{t.Config, t.l, other}
 }
